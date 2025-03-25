@@ -104,7 +104,7 @@ export default function SearchFilters({ isHero = false }: SearchFiltersProps) {
             <Input 
               type="text" 
               placeholder={translate("searchPlaceholder", language)} 
-              className="pl-10"
+              className="pl-10 h-12 md:h-10 touch-feedback"
               value={localFilters.search || ''}
               onChange={(e) => handleFilterChange('search', e.target.value)}
             />
@@ -116,12 +116,12 @@ export default function SearchFilters({ isHero = false }: SearchFiltersProps) {
             value={localFilters.propertyType || 'any'} 
             onValueChange={(value) => handleFilterChange('propertyType', value)}
           >
-            <SelectTrigger>
+            <SelectTrigger className="h-12 md:h-10 touch-feedback">
               <SelectValue placeholder={translate(PropertyTypes[0].label, language)} />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="max-h-[300px]">
               {PropertyTypes.map((type) => (
-                <SelectItem key={type.value} value={type.value || 'any'}>
+                <SelectItem key={type.value} value={type.value || 'any'} className="h-11 md:h-9">
                   {translate(type.label, language)}
                 </SelectItem>
               ))}
@@ -138,15 +138,15 @@ export default function SearchFilters({ isHero = false }: SearchFiltersProps) {
             } 
             onValueChange={handlePriceRangeChange}
           >
-            <SelectTrigger>
+            <SelectTrigger className="h-12 md:h-10 touch-feedback">
               <SelectValue placeholder={translate(PriceRanges[0].label, language)} />
             </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="any_price">
+            <SelectContent className="max-h-[300px]">
+              <SelectItem value="any_price" className="h-11 md:h-9">
                 {translate(PriceRanges[0].label, language)}
               </SelectItem>
               {PriceRanges.slice(1).map((range) => (
-                <SelectItem key={range.value} value={range.value}>
+                <SelectItem key={range.value} value={range.value} className="h-11 md:h-9">
                   {translate(range.label, language)}
                 </SelectItem>
               ))}
@@ -154,7 +154,7 @@ export default function SearchFilters({ isHero = false }: SearchFiltersProps) {
           </Select>
           
           <Button 
-            className="col-span-2 md:col-span-1"
+            className="col-span-2 md:col-span-1 h-12 md:h-10 touch-feedback"
             onClick={handleSearch}
           >
             <i className="fas fa-search mr-2"></i>{translate("search", language)}
@@ -167,15 +167,15 @@ export default function SearchFilters({ isHero = false }: SearchFiltersProps) {
         <Button 
           variant="outline" 
           size="sm" 
-          className="h-8 px-3 py-1 bg-neutral-100 hover:bg-neutral-200 rounded-full text-xs md:text-sm text-neutral-700 border-0"
+          className="h-10 md:h-8 px-4 md:px-3 py-1 bg-neutral-100 hover:bg-neutral-200 rounded-full text-sm text-neutral-700 border-0 touch-feedback"
           onClick={() => setShowMoreFilters(!showMoreFilters)}
         >
-          <Filter className="h-3.5 w-3.5 mr-1" />
+          <Filter className="h-4 md:h-3.5 w-4 md:w-3.5 mr-1" />
           {translate("moreFilters", language)}
         </Button>
         
         {localFilters.minBedrooms && (
-          <Badge variant="outline" className="h-8 px-3 py-1 bg-neutral-100 hover:bg-neutral-200 rounded-full text-xs md:text-sm text-neutral-700 font-normal border-0">
+          <Badge variant="outline" className="h-10 md:h-8 px-4 md:px-3 py-1 bg-neutral-100 hover:bg-neutral-200 rounded-full text-sm text-neutral-700 font-normal border-0">
             {localFilters.minBedrooms}+ {translate("beds", language)}
           </Badge>
         )}
@@ -184,11 +184,11 @@ export default function SearchFilters({ isHero = false }: SearchFiltersProps) {
           <Badge 
             key={feature} 
             variant="outline" 
-            className="h-8 flex items-center gap-1 px-3 py-1 bg-neutral-100 hover:bg-neutral-200 rounded-full text-xs md:text-sm text-neutral-700 font-normal border-0"
+            className="h-10 md:h-8 flex items-center gap-1 px-4 md:px-3 py-1 bg-neutral-100 hover:bg-neutral-200 rounded-full text-sm text-neutral-700 font-normal border-0"
           >
             {feature}
             <X 
-              className="h-3 w-3 cursor-pointer" 
+              className="h-4 md:h-3 w-4 md:w-3 cursor-pointer touch-feedback" 
               onClick={() => handleFeatureToggle(feature)} 
             />
           </Badge>
@@ -198,7 +198,7 @@ export default function SearchFilters({ isHero = false }: SearchFiltersProps) {
           <Button 
             variant="outline" 
             size="sm" 
-            className="h-8 px-3 py-1 bg-neutral-100 hover:bg-neutral-200 rounded-full text-xs md:text-sm text-neutral-700 border-0"
+            className="h-10 md:h-8 px-4 md:px-3 py-1 bg-neutral-100 hover:bg-neutral-200 rounded-full text-sm text-neutral-700 border-0 touch-feedback"
             onClick={clearFilters}
           >
             {translate("Clear", language)}
@@ -206,98 +206,120 @@ export default function SearchFilters({ isHero = false }: SearchFiltersProps) {
         )}
       </div>
       
-      {/* More Filters Panel */}
+      {/* More Filters Panel - Overlay on mobile */}
       {showMoreFilters && (
-        <div className="mt-4 p-4 border border-neutral-200 rounded-lg bg-neutral-50">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <Label className="mb-2 block text-sm font-medium">{translate("propertyType", language)}</Label>
-              <Select 
-                value={localFilters.propertyType || 'any'} 
-                onValueChange={(value) => handleFilterChange('propertyType', value)}
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-end md:items-center justify-center md:static md:bg-transparent md:z-auto">
+          <div className="bg-white w-full md:w-auto md:bg-neutral-50 max-h-[80vh] md:max-h-none overflow-y-auto rounded-t-lg md:rounded-lg p-5 md:p-4 md:border md:border-neutral-200 shadow-lg md:shadow-none md:mt-4 animate-in slide-in-from-bottom">
+            <div className="flex items-center justify-between mb-4 md:hidden">
+              <h3 className="text-lg font-semibold">{translate("Filters", language)}</h3>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="h-9 w-9 p-0 rounded-full"
+                onClick={() => setShowMoreFilters(false)}
               >
-                <SelectTrigger>
-                  <SelectValue placeholder={translate(PropertyTypes[0].label, language)} />
-                </SelectTrigger>
-                <SelectContent>
-                  {PropertyTypes.map((type) => (
-                    <SelectItem key={type.value} value={type.value || 'any'}>
-                      {translate(type.label, language)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                <X className="h-5 w-5" />
+              </Button>
             </div>
             
-            <div>
-              <Label className="mb-2 block text-sm font-medium">{translate("listingType", language)}</Label>
-              <Select 
-                value={localFilters.listingType || 'any_listing'} 
-                onValueChange={(value) => handleFilterChange('listingType', value)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder={translate("Select", language)} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="any_listing">{translate("Select", language)}</SelectItem>
-                  {ListingTypes.map((type) => (
-                    <SelectItem key={type.value} value={type.value}>
-                      {translate(type.label, language)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5 md:gap-4">
+              <div>
+                <Label className="mb-2 block text-sm font-medium">{translate("propertyType", language)}</Label>
+                <Select 
+                  value={localFilters.propertyType || 'any'} 
+                  onValueChange={(value) => handleFilterChange('propertyType', value)}
+                >
+                  <SelectTrigger className="h-12 md:h-10 touch-feedback">
+                    <SelectValue placeholder={translate(PropertyTypes[0].label, language)} />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-[300px]">
+                    {PropertyTypes.map((type) => (
+                      <SelectItem key={type.value} value={type.value || 'any'} className="h-11 md:h-9">
+                        {translate(type.label, language)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div>
+                <Label className="mb-2 block text-sm font-medium">{translate("listingType", language)}</Label>
+                <Select 
+                  value={localFilters.listingType || 'any_listing'} 
+                  onValueChange={(value) => handleFilterChange('listingType', value)}
+                >
+                  <SelectTrigger className="h-12 md:h-10 touch-feedback">
+                    <SelectValue placeholder={translate("Select", language)} />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-[300px]">
+                    <SelectItem value="any_listing" className="h-11 md:h-9">{translate("Select", language)}</SelectItem>
+                    {ListingTypes.map((type) => (
+                      <SelectItem key={type.value} value={type.value} className="h-11 md:h-9">
+                        {translate(type.label, language)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div>
+                <Label className="mb-2 block text-sm font-medium">{translate("beds", language)}</Label>
+                <Select 
+                  value={localFilters.minBedrooms?.toString() || 'any_beds'} 
+                  onValueChange={(value) => handleFilterChange('minBedrooms', value === 'any_beds' ? undefined : getBedroomCount(value))}
+                >
+                  <SelectTrigger className="h-12 md:h-10 touch-feedback">
+                    <SelectValue placeholder={translate(BedroomOptions[0].label, language)} />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-[300px]">
+                    <SelectItem value="any_beds" className="h-11 md:h-9">{translate(BedroomOptions[0].label, language)}</SelectItem>
+                    {BedroomOptions.slice(1).map((option) => (
+                      <SelectItem key={option.value} value={option.value} className="h-11 md:h-9">
+                        {translate(option.label, language)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             
-            <div>
-              <Label className="mb-2 block text-sm font-medium">{translate("beds", language)}</Label>
-              <Select 
-                value={localFilters.minBedrooms?.toString() || 'any_beds'} 
-                onValueChange={(value) => handleFilterChange('minBedrooms', value === 'any_beds' ? undefined : getBedroomCount(value))}
+            <div className="mt-5 md:mt-4">
+              <Label className="mb-2 block text-sm font-medium">{translate("features", language)}</Label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-2">
+                {Features.map((feature) => (
+                  <div key={feature.value} className="flex items-center space-x-2 py-2 md:py-0 touch-feedback">
+                    <Checkbox 
+                      id={feature.value}
+                      checked={selectedFeatures.includes(feature.value)}
+                      onCheckedChange={() => handleFeatureToggle(feature.value)}
+                      className="h-5 w-5 md:h-4 md:w-4"
+                    />
+                    <Label htmlFor={feature.value} className="text-sm font-normal cursor-pointer">
+                      {translate(feature.label, language)}
+                    </Label>
+                  </div>
+                ))}
+              </div>
+            </div>
+            
+            <div className="mt-6 md:mt-4 flex justify-between md:justify-end space-x-3 safe-area-bottom pb-2">
+              <Button 
+                variant="outline" 
+                className="flex-1 md:flex-none h-12 md:h-10 touch-feedback"
+                onClick={() => setShowMoreFilters(false)}
               >
-                <SelectTrigger>
-                  <SelectValue placeholder={translate(BedroomOptions[0].label, language)} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="any_beds">{translate(BedroomOptions[0].label, language)}</SelectItem>
-                  {BedroomOptions.slice(1).map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {translate(option.label, language)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                {translate("Cancel", language)}
+              </Button>
+              <Button 
+                className="flex-1 md:flex-none h-12 md:h-10 touch-feedback"
+                onClick={() => {
+                  handleSearch();
+                  setShowMoreFilters(false);
+                }}
+              >
+                {translate("Apply Filters", language)}
+              </Button>
             </div>
-          </div>
-          
-          <div className="mt-4">
-            <Label className="mb-2 block text-sm font-medium">{translate("features", language)}</Label>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-              {Features.map((feature) => (
-                <div key={feature.value} className="flex items-center space-x-2">
-                  <Checkbox 
-                    id={feature.value}
-                    checked={selectedFeatures.includes(feature.value)}
-                    onCheckedChange={() => handleFeatureToggle(feature.value)}
-                  />
-                  <Label htmlFor={feature.value} className="text-sm font-normal cursor-pointer">
-                    {translate(feature.label, language)}
-                  </Label>
-                </div>
-              ))}
-            </div>
-          </div>
-          
-          <div className="mt-4 flex justify-end space-x-2">
-            <Button variant="outline" onClick={() => setShowMoreFilters(false)}>
-              {translate("Cancel", language)}
-            </Button>
-            <Button onClick={() => {
-              handleSearch();
-              setShowMoreFilters(false);
-            }}>
-              {translate("Apply Filters", language)}
-            </Button>
           </div>
         </div>
       )}

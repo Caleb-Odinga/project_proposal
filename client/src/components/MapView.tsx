@@ -33,18 +33,48 @@ export default function MapView({ properties, isLoading }: MapViewProps) {
   useEffect(() => {
     if (!mapRef.current || leafletMapRef.current) return;
 
-    // Initialize map
-    const map = L.map(mapRef.current).setView(DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM);
+    // Initialize map with touch zoom and drag options optimized for mobile
+    const map = L.map(mapRef.current, {
+      center: DEFAULT_MAP_CENTER as L.LatLngTuple,
+      zoom: DEFAULT_MAP_ZOOM,
+      zoomControl: false, // We'll add it in a different position better for mobile
+      dragging: true,
+      touchZoom: true,
+      scrollWheelZoom: false, // Disable scroll wheel zoom on mobile
+      doubleClickZoom: true,
+      boxZoom: true,
+      keyboard: false, // Disable keyboard navigation on mobile
+      bounceAtZoomLimits: true,
+      maxBoundsViscosity: 1.0, // Prevents panning outside bounds
+    });
     
-    // Add tile layer
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    // Add zoom control to bottom right for better mobile UX
+    L.control.zoom({
+      position: 'bottomright'
+    }).addTo(map);
+    
+    // Use a more mobile-friendly tile provider with better performance
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+      subdomains: 'abcd',
+      maxZoom: 20,
+      minZoom: 3
     }).addTo(map);
 
     leafletMapRef.current = map;
+    
+    // Handle responsive updates
+    const handleResize = () => {
+      if (leafletMapRef.current) {
+        leafletMapRef.current.invalidateSize();
+      }
+    };
+    
+    window.addEventListener('resize', handleResize);
 
     // Cleanup on unmount
     return () => {
+      window.removeEventListener('resize', handleResize);
       if (leafletMapRef.current) {
         leafletMapRef.current.remove();
         leafletMapRef.current = null;
@@ -99,7 +129,7 @@ export default function MapView({ properties, isLoading }: MapViewProps) {
       }
     } else {
       // If no properties, reset to default view
-      leafletMapRef.current.setView(DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM);
+      leafletMapRef.current.setView(DEFAULT_MAP_CENTER as L.LatLngTuple, DEFAULT_MAP_ZOOM);
     }
   }, [properties, isLoading]);
 
@@ -110,7 +140,7 @@ export default function MapView({ properties, isLoading }: MapViewProps) {
   };
 
   return (
-    <div className="relative h-[70vh] md:h-[60vh] rounded-lg overflow-hidden">
+    <div className="relative h-[70vh] md:h-[60vh] rounded-lg overflow-hidden mobile-optimize">
       {isLoading ? (
         <Skeleton className="w-full h-full" />
       ) : (
@@ -119,41 +149,52 @@ export default function MapView({ properties, isLoading }: MapViewProps) {
 
       {/* Property Info Popup */}
       {selectedProperty && (
-        <div className="absolute bottom-4 left-0 right-0 mx-auto w-[90%] max-w-md bg-white rounded-lg shadow-lg overflow-hidden">
+        <div className="absolute bottom-4 left-0 right-0 mx-auto w-[90%] max-w-md bg-white rounded-lg shadow-xl overflow-hidden animate-in slide-in-from-bottom safe-area-bottom">
           <button 
-            className="absolute top-2 right-2 z-10 bg-white rounded-full p-1 shadow-md" 
+            className="absolute top-2 right-2 z-10 bg-white rounded-full w-8 h-8 flex items-center justify-center shadow-md touch-feedback"
             onClick={() => setSelectedProperty(null)}
+            aria-label="Close property details"
           >
             <i className="fas fa-times text-neutral-500"></i>
           </button>
-          <div className="flex">
-            <div className="w-1/3">
+          <div className="flex flex-col sm:flex-row">
+            <div className="w-full sm:w-1/3 h-40 sm:h-auto">
               <img 
                 src={selectedProperty.images[0]} 
                 alt={selectedProperty.title} 
                 className="w-full h-full object-cover"
+                loading="lazy"
               />
             </div>
-            <div className="w-2/3 p-3">
-              <h3 className="font-semibold text-sm">{selectedProperty.title}</h3>
-              <p className="text-primary font-semibold text-sm">
+            <div className="w-full sm:w-2/3 p-4">
+              <h3 className="font-semibold text-base mb-1 line-clamp-1">{selectedProperty.title}</h3>
+              <p className="text-primary font-semibold text-base mb-1">
                 {formatPrice(selectedProperty.price, selectedProperty.listingType)}
               </p>
-              <p className="text-xs text-neutral-500">
+              <p className="text-sm text-neutral-500 mb-2">
                 <i className="fas fa-map-marker-alt mr-1"></i> {selectedProperty.location}
               </p>
-              <div className="mt-1 flex items-center text-xs text-neutral-600">
-                <span className="mr-2"><i className="fas fa-bed mr-1"></i> {selectedProperty.bedrooms}</span>
-                <span><i className="fas fa-bath mr-1"></i> {selectedProperty.bathrooms}</span>
+              <div className="flex items-center text-sm text-neutral-600 mb-3">
+                <span className="mr-4"><i className="fas fa-bed mr-1"></i> {selectedProperty.bedrooms} {translate("beds", language)}</span>
+                <span><i className="fas fa-bath mr-1"></i> {selectedProperty.bathrooms} {translate("baths", language)}</span>
               </div>
-              <a 
-                href={`/property/${selectedProperty.id}`} 
-                className="mt-2 block text-center text-xs bg-primary text-white py-1 px-2 rounded hover:bg-primary-dark transition-colors"
-              >
-                {translate("View Details", language)}
-              </a>
+              <div className="flex">
+                <a 
+                  href={`/property/${selectedProperty.id}`} 
+                  className="w-full block text-center font-medium bg-primary text-white py-2.5 px-4 rounded-md hover:bg-primary-dark transition-colors touch-feedback"
+                >
+                  {translate("View Details", language)}
+                </a>
+              </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Map Loading Indicator or Instructions */}
+      {!isLoading && properties.length > 0 && (
+        <div className="absolute bottom-20 right-4 bg-white/90 backdrop-blur-sm p-2 rounded-md shadow-md text-xs text-center">
+          <p>{translate("Tap on markers to view details", language)}</p>
         </div>
       )}
     </div>

@@ -199,32 +199,42 @@ export default function MainLayout({ children }: MainLayoutProps) {
       </footer>
 
       {/* Mobile Navigation */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-neutral-200 z-50">
-        <div className="flex justify-around">
-          <Link href="/" className="flex flex-col items-center py-2 text-primary">
-            <Home className="h-5 w-5" />
-            <span className="text-xs mt-1">{translate("home", language)}</span>
+      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-neutral-200 z-50 safe-area-bottom shadow-lg">
+        <div className="flex justify-around py-1">
+          <Link href="/">
+            <div className="flex flex-col items-center py-2 px-4 rounded-lg text-primary active:bg-neutral-100 transition-colors touch-feedback">
+              <Home className="h-6 w-6" />
+              <span className="text-xs mt-1 font-medium">{translate("home", language)}</span>
+            </div>
           </Link>
-          <Link href="/search" className="flex flex-col items-center py-2 text-neutral-500">
-            <Search className="h-5 w-5" />
-            <span className="text-xs mt-1">{translate("search", language)}</span>
+          <Link href="/search">
+            <div className="flex flex-col items-center py-2 px-4 rounded-lg text-neutral-500 active:bg-neutral-100 transition-colors touch-feedback">
+              <Search className="h-6 w-6" />
+              <span className="text-xs mt-1 font-medium">{translate("search", language)}</span>
+            </div>
           </Link>
-          <Link href="/favorites" className="flex flex-col items-center py-2 text-neutral-500">
-            <Heart className="h-5 w-5" />
-            <span className="text-xs mt-1">{translate("saved", language)}</span>
+          <Link href="/favorites">
+            <div className="flex flex-col items-center py-2 px-4 rounded-lg text-neutral-500 active:bg-neutral-100 transition-colors touch-feedback">
+              <Heart className="h-6 w-6" />
+              <span className="text-xs mt-1 font-medium">{translate("saved", language)}</span>
+            </div>
           </Link>
-          <Link href="/messages" className="flex flex-col items-center py-2 text-neutral-500 relative">
-            <MessageSquare className="h-5 w-5" />
-            {isAuthenticated && unreadCount > 0 && (
-              <span className="absolute top-1 right-5 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] text-white">
-                {unreadCount}
-              </span>
-            )}
-            <span className="text-xs mt-1">{translate("messages", language)}</span>
+          <Link href="/messages">
+            <div className="flex flex-col items-center py-2 px-4 rounded-lg text-neutral-500 active:bg-neutral-100 transition-colors touch-feedback relative">
+              <MessageSquare className="h-6 w-6" />
+              {isAuthenticated && unreadCount > 0 && (
+                <span className="absolute top-0 right-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] text-white font-bold">
+                  {unreadCount}
+                </span>
+              )}
+              <span className="text-xs mt-1 font-medium">{translate("messages", language)}</span>
+            </div>
           </Link>
-          <Link href={isAuthenticated ? "/profile" : "/login"} className="flex flex-col items-center py-2 text-neutral-500">
-            <User className="h-5 w-5" />
-            <span className="text-xs mt-1">{translate("profile", language)}</span>
+          <Link href={isAuthenticated ? "/profile" : "/login"}>
+            <div className="flex flex-col items-center py-2 px-4 rounded-lg text-neutral-500 active:bg-neutral-100 transition-colors touch-feedback">
+              <User className="h-6 w-6" />
+              <span className="text-xs mt-1 font-medium">{translate("profile", language)}</span>
+            </div>
           </Link>
         </div>
       </div>
