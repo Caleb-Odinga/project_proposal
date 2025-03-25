@@ -1,8 +1,12 @@
-import type { Express, Request, Response } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import session from "express-session";
 import { z } from "zod";
+import bcrypt from "bcrypt";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
+import xss from "xss-clean";
 import {
   insertUserSchema,
   insertPropertySchema,
@@ -11,6 +15,11 @@ import {
 } from "@shared/schema";
 import { createId } from "@paralleldrive/cuid2";
 
+// Security constants
+const SALT_ROUNDS = 10;
+const MAX_REQUESTS_PER_WINDOW = 100;
+const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+
 declare module "express-session" {
   interface SessionData {
     userId: number;
@@ -18,7 +27,39 @@ declare module "express-session" {
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Set up session middleware
+  // Set up security middleware
+  
+  // Set security HTTP headers with customized CSP
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+          styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+          fontSrc: ["'self'", "https://fonts.gstatic.com"],
+          imgSrc: ["'self'", "data:", "https://*"],
+          connectSrc: ["'self'", "wss://*"]
+        }
+      }
+    })
+  );
+  
+  // XSS protection
+  app.use(xss());
+  
+  // Rate limiting to prevent brute force attacks
+  app.use(
+    rateLimit({
+      windowMs: RATE_LIMIT_WINDOW_MS,
+      max: MAX_REQUESTS_PER_WINDOW,
+      message: { message: "Too many requests from this IP, please try again later" },
+      standardHeaders: true,
+      legacyHeaders: false,
+    })
+  );
+  
+  // Session middleware with secure settings
   app.use(
     session({
       secret: process.env.SESSION_SECRET || "nyumba-secret-key",
@@ -26,13 +67,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       saveUninitialized: false,
       cookie: { 
         secure: process.env.NODE_ENV === "production",
+        httpOnly: true, // Prevents client-side JS from reading the cookie
+        sameSite: "strict", // CSRF protection
         maxAge: 1000 * 60 * 60 * 24 * 7 // 1 week
       }
     })
   );
 
   // Authentication middleware
-  const authenticate = (req: Request, res: Response, next: () => void) => {
+  const authenticate = (req: Request, res: Response, next: NextFunction) => {
     if (!req.session.userId) {
       return res.status(401).json({ message: "Unauthorized" });
     }
@@ -61,15 +104,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Email already registered" });
       }
       
-      // Remove confirmPassword field before saving to database
-      const { confirmPassword, ...userData } = userFormData;
+      // Hash the password with bcrypt
+      const hashedPassword = await bcrypt.hash(userFormData.password, SALT_ROUNDS);
+      
+      // Remove confirmPassword field and use hashed password before saving to database
+      const { confirmPassword, password, ...restUserData } = userFormData;
+      const userData = {
+        ...restUserData,
+        password: hashedPassword
+      };
+      
       const user = await storage.createUser(userData);
       
       // Set user session
       req.session.userId = user.id;
       
       // Return user without password
-      const { password, ...userWithoutPassword } = user;
+      const { password: _, ...userWithoutPassword } = user;
       res.status(201).json(userWithoutPassword);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -89,7 +140,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Find user
       const user = await storage.getUserByUsername(username);
-      if (!user || user.password !== password) {
+      if (!user) {
+        return res.status(401).json({ message: "Invalid credentials" });
+      }
+      
+      // Verify password using bcrypt
+      const isPasswordValid = await bcrypt.compare(password, user.password);
+      if (!isPasswordValid) {
         return res.status(401).json({ message: "Invalid credentials" });
       }
       
@@ -142,18 +199,79 @@ export async function registerRoutes(app: Express): Promise<Server> {
         phone: z.string().optional(),
         avatar: z.string().optional(),
         bio: z.string().optional(),
-        language: z.string().optional()
-      });
+        language: z.string().optional(),
+        currentPassword: z.string().optional(),
+        newPassword: z.string().optional(),
+        confirmNewPassword: z.string().optional(),
+      })
+      .refine(
+        (data) => {
+          // If changing password, require all password fields
+          return (
+            (data.currentPassword && data.newPassword && data.confirmNewPassword) ||
+            (!data.currentPassword && !data.newPassword && !data.confirmNewPassword)
+          );
+        },
+        {
+          message: "All password fields are required when changing password",
+        }
+      )
+      .refine(
+        (data) => {
+          // Passwords must match if provided
+          return !data.newPassword || data.newPassword === data.confirmNewPassword;
+        },
+        {
+          message: "New passwords do not match",
+          path: ["confirmNewPassword"],
+        }
+      );
       
-      const userData = updateSchema.parse(req.body);
-      const updatedUser = await storage.updateUser(userId, userData);
+      const formData = updateSchema.parse(req.body);
       
-      if (!updatedUser) {
-        return res.status(404).json({ message: "User not found" });
+      // If user is trying to change password
+      if (formData.currentPassword && formData.newPassword) {
+        // Verify current password
+        const user = await storage.getUser(userId);
+        if (!user) {
+          return res.status(404).json({ message: "User not found" });
+        }
+        
+        const isPasswordValid = await bcrypt.compare(formData.currentPassword, user.password);
+        if (!isPasswordValid) {
+          return res.status(400).json({ message: "Current password is incorrect" });
+        }
+        
+        // Hash the new password
+        const hashedPassword = await bcrypt.hash(formData.newPassword, SALT_ROUNDS);
+        
+        // Remove password-related fields and add the hashed password
+        const { currentPassword, newPassword, confirmNewPassword, ...restData } = formData;
+        const userData = {
+          ...restData,
+          password: hashedPassword
+        };
+        
+        const updatedUser = await storage.updateUser(userId, userData);
+        
+        if (!updatedUser) {
+          return res.status(404).json({ message: "User not found" });
+        }
+        
+        const { password, ...userWithoutPassword } = updatedUser;
+        return res.json(userWithoutPassword);
+      } else {
+        // Regular profile update (no password change)
+        const { currentPassword, newPassword, confirmNewPassword, ...userData } = formData;
+        const updatedUser = await storage.updateUser(userId, userData);
+        
+        if (!updatedUser) {
+          return res.status(404).json({ message: "User not found" });
+        }
+        
+        const { password, ...userWithoutPassword } = updatedUser;
+        res.json(userWithoutPassword);
       }
-      
-      const { password, ...userWithoutPassword } = updatedUser;
-      res.json(userWithoutPassword);
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: error.errors });
