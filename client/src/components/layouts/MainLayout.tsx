@@ -19,7 +19,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
   const [scrolled, setScrolled] = useState(false);
 
   // Get unread message count
-  const { data: unreadData } = useQuery({
+  const { data: unreadData } = useQuery<{ count: number }>({
     queryKey: ['/api/messages/unread/count'],
     enabled: isAuthenticated,
   });
@@ -48,17 +48,15 @@ export default function MainLayout({ children }: MainLayoutProps) {
       <header className={`sticky top-0 z-50 bg-white ${scrolled ? 'shadow-md' : 'shadow-sm'} transition-shadow duration-300`}>
         <div className="container mx-auto px-4 py-3 flex justify-between items-center">
           <div className="flex items-center">
-            <Link href="/">
-              <a className="text-2xl font-heading font-bold text-primary">
-                <i className="fas fa-home mr-2"></i>{translate("brand", language)}
-              </a>
+            <Link href="/" className="text-2xl font-heading font-bold text-primary">
+              <i className="fas fa-home mr-2"></i>{translate("brand", language)}
             </Link>
             <div className="hidden md:flex ml-6 space-x-1">
               <Button variant="ghost" asChild>
-                <Link href={`/?listingType=rent`}><a>{translate("rent", language)}</a></Link>
+                <Link href={`/?listingType=rent`}>{translate("rent", language)}</Link>
               </Button>
               <Button variant="ghost" asChild>
-                <Link href={`/?listingType=sale`}><a>{translate("buy", language)}</a></Link>
+                <Link href={`/?listingType=sale`}>{translate("buy", language)}</Link>
               </Button>
               <Button variant="ghost">
                 {translate("sell", language)}
@@ -76,45 +74,39 @@ export default function MainLayout({ children }: MainLayoutProps) {
               <>
                 {user?.role !== 'tenant' && (
                   <Button className="hidden md:flex text-sm" asChild>
-                    <Link href="/add-property"><a>{translate("listProperty", language)}</a></Link>
+                    <Link href="/add-property">{translate("listProperty", language)}</Link>
                   </Button>
                 )}
                 <Button variant="ghost" className="hidden md:block relative" asChild>
-                  <Link href="/favorites">
-                    <a>
-                      <Heart className="h-5 w-5" />
-                      <span className="sr-only">{translate("favorites", language)}</span>
-                    </a>
+                  <Link href="/favorites" className="flex items-center">
+                    <Heart className="h-5 w-5" />
+                    <span className="sr-only">{translate("favorites", language)}</span>
                   </Link>
                 </Button>
                 <Button variant="ghost" className="hidden md:block relative" asChild>
-                  <Link href="/messages">
-                    <a>
-                      <MessageSquare className="h-5 w-5" />
-                      {unreadCount > 0 && (
-                        <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] text-white">
-                          {unreadCount}
-                        </span>
-                      )}
-                      <span className="sr-only">{translate("messages", language)}</span>
-                    </a>
+                  <Link href="/messages" className="flex items-center relative">
+                    <MessageSquare className="h-5 w-5" />
+                    {unreadCount > 0 && (
+                      <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] text-white">
+                        {unreadCount}
+                      </span>
+                    )}
+                    <span className="sr-only">{translate("messages", language)}</span>
                   </Link>
                 </Button>
                 <Button variant="ghost" className="p-2" asChild>
-                  <Link href="/profile">
-                    <a>
-                      <ProfileAvatar user={user} />
-                    </a>
+                  <Link href="/profile" className="flex items-center">
+                    <ProfileAvatar user={user} />
                   </Link>
                 </Button>
               </>
             ) : (
               <>
                 <Button variant="ghost" className="hidden md:block" asChild>
-                  <Link href="/login"><a>{translate("login", language)}</a></Link>
+                  <Link href="/login">{translate("login", language)}</Link>
                 </Button>
                 <Button className="hidden md:block" asChild>
-                  <Link href="/register"><a>{translate("register", language)}</a></Link>
+                  <Link href="/register">{translate("register", language)}</Link>
                 </Button>
               </>
             )}
@@ -209,40 +201,30 @@ export default function MainLayout({ children }: MainLayoutProps) {
       {/* Mobile Navigation */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-neutral-200 z-50">
         <div className="flex justify-around">
-          <Link href="/">
-            <a className="flex flex-col items-center py-2 text-primary">
-              <Home className="h-5 w-5" />
-              <span className="text-xs mt-1">{translate("home", language)}</span>
-            </a>
+          <Link href="/" className="flex flex-col items-center py-2 text-primary">
+            <Home className="h-5 w-5" />
+            <span className="text-xs mt-1">{translate("home", language)}</span>
           </Link>
-          <Link href="/search">
-            <a className="flex flex-col items-center py-2 text-neutral-500">
-              <Search className="h-5 w-5" />
-              <span className="text-xs mt-1">{translate("search", language)}</span>
-            </a>
+          <Link href="/search" className="flex flex-col items-center py-2 text-neutral-500">
+            <Search className="h-5 w-5" />
+            <span className="text-xs mt-1">{translate("search", language)}</span>
           </Link>
-          <Link href="/favorites">
-            <a className="flex flex-col items-center py-2 text-neutral-500">
-              <Heart className="h-5 w-5" />
-              <span className="text-xs mt-1">{translate("saved", language)}</span>
-            </a>
+          <Link href="/favorites" className="flex flex-col items-center py-2 text-neutral-500">
+            <Heart className="h-5 w-5" />
+            <span className="text-xs mt-1">{translate("saved", language)}</span>
           </Link>
-          <Link href="/messages">
-            <a className="flex flex-col items-center py-2 text-neutral-500 relative">
-              <MessageSquare className="h-5 w-5" />
-              {isAuthenticated && unreadCount > 0 && (
-                <span className="absolute top-1 right-5 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] text-white">
-                  {unreadCount}
-                </span>
-              )}
-              <span className="text-xs mt-1">{translate("messages", language)}</span>
-            </a>
+          <Link href="/messages" className="flex flex-col items-center py-2 text-neutral-500 relative">
+            <MessageSquare className="h-5 w-5" />
+            {isAuthenticated && unreadCount > 0 && (
+              <span className="absolute top-1 right-5 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] text-white">
+                {unreadCount}
+              </span>
+            )}
+            <span className="text-xs mt-1">{translate("messages", language)}</span>
           </Link>
-          <Link href={isAuthenticated ? "/profile" : "/login"}>
-            <a className="flex flex-col items-center py-2 text-neutral-500">
-              <User className="h-5 w-5" />
-              <span className="text-xs mt-1">{translate("profile", language)}</span>
-            </a>
+          <Link href={isAuthenticated ? "/profile" : "/login"} className="flex flex-col items-center py-2 text-neutral-500">
+            <User className="h-5 w-5" />
+            <span className="text-xs mt-1">{translate("profile", language)}</span>
           </Link>
         </div>
       </div>
