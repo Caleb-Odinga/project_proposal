@@ -1,0 +1,22 @@
+/* Import Leaflet CSS */
+@import url('https://unpkg.com/leaflet@1.9.4/dist/leaflet.css');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply font-sans antialiased bg-background text-foreground;
+  }
+
+  /* Leaflet custom marker styles */
+  .custom-marker {
+    background: transparent;
+    border: none;
+  }
+}
