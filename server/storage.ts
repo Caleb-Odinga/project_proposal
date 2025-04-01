@@ -1,10 +1,12 @@
-import {
-  type User, type InsertUser,
-  type Property, type InsertProperty,
-  type Favorite, type InsertFavorite,
-  type Message, type InsertMessage,
-  type Neighborhood, type InsertNeighborhood
-} from "@shared/schema";
+// Import schema and types
+import { users, properties, favorites, messages, neighborhoods,
+         type User, type InsertUser,
+         type Property, type InsertProperty, 
+         type Favorite, type InsertFavorite,
+         type Message, type InsertMessage,
+         type Neighborhood, type InsertNeighborhood } from "@shared/schema";
+import { db } from "./db";
+import { eq, and, desc, or, like, gte, lte, inArray, sql, not } from "drizzle-orm";
 
 // Storage interface with all required CRUD operations
 export interface IStorage {
@@ -61,634 +63,406 @@ export interface Conversation {
   unreadCount: number;
 }
 
-// In-memory storage implementation
-export class MemStorage implements IStorage {
-  private users: Map<number, User>;
-  private properties: Map<number, Property>;
-  private favorites: Map<number, Favorite>;
-  private messages: Map<number, Message>;
-  private neighborhoods: Map<number, Neighborhood>;
-  
-  private userIdCounter: number;
-  private propertyIdCounter: number;
-  private favoriteIdCounter: number;
-  private messageIdCounter: number;
-  private neighborhoodIdCounter: number;
-  
+// Database Storage Implementation
+export class DatabaseStorage implements IStorage {
   constructor() {
-    this.users = new Map();
-    this.properties = new Map();
-    this.favorites = new Map();
-    this.messages = new Map();
-    this.neighborhoods = new Map();
-    
-    this.userIdCounter = 1;
-    this.propertyIdCounter = 1;
-    this.favoriteIdCounter = 1;
-    this.messageIdCounter = 1;
-    this.neighborhoodIdCounter = 1;
-    
-    // Initialize with sample data
-    this.initializeData();
+    // Nothing to initialize in the database version
   }
   
   // USERS
   async getUser(id: number): Promise<User | undefined> {
-    return this.users.get(id);
+    const result = await db.select().from(users).where(eq(users.id, id));
+    return result.length > 0 ? result[0] : undefined;
   }
   
   async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username.toLowerCase() === username.toLowerCase()
-    );
+    const lowerUsername = username.toLowerCase();
+    const result = await db
+      .select()
+      .from(users)
+      .where(eq(sql`LOWER(${users.username})`, lowerUsername));
+    return result.length > 0 ? result[0] : undefined;
   }
   
   async getUserByEmail(email: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.email.toLowerCase() === email.toLowerCase()
-    );
+    const lowerEmail = email.toLowerCase();
+    const result = await db
+      .select()
+      .from(users)
+      .where(eq(sql`LOWER(${users.email})`, lowerEmail));
+    return result.length > 0 ? result[0] : undefined;
   }
   
   async createUser(userData: InsertUser): Promise<User> {
-    const id = this.userIdCounter++;
-    const now = new Date();
-    
-    const user: User = {
-      id,
-      username: userData.username,
-      password: userData.password, // In a real app, this would be hashed
-      email: userData.email,
-      fullName: userData.fullName,
-      phone: userData.phone,
-      avatar: userData.avatar,
-      role: userData.role,
-      bio: userData.bio,
-      createdAt: now,
-      language: userData.language || "en",
-    };
-    
-    this.users.set(id, user);
+    const [user] = await db
+      .insert(users)
+      .values({
+        username: userData.username,
+        password: userData.password,
+        email: userData.email,
+        fullName: userData.fullName,
+        phone: userData.phone,
+        avatar: userData.avatar,
+        role: userData.role || "tenant",
+        bio: userData.bio,
+        language: userData.language || "en",
+      })
+      .returning();
     return user;
   }
   
   async updateUser(id: number, userData: Partial<User>): Promise<User | undefined> {
-    const existingUser = this.users.get(id);
-    if (!existingUser) return undefined;
-    
-    const updatedUser = { ...existingUser, ...userData };
-    this.users.set(id, updatedUser);
+    const [updatedUser] = await db
+      .update(users)
+      .set(userData)
+      .where(eq(users.id, id))
+      .returning();
     return updatedUser;
   }
   
   // PROPERTIES
   async getProperties(filters: PropertyFilters = {}): Promise<Property[]> {
-    let properties = Array.from(this.properties.values());
+    let query = db.select().from(properties);
     
+    // Handle text search with SQL LIKE
     if (filters.search) {
-      const search = filters.search.toLowerCase();
-      properties = properties.filter(
-        (property) =>
-          property.title.toLowerCase().includes(search) ||
-          property.description.toLowerCase().includes(search) ||
-          property.location.toLowerCase().includes(search)
+      const search = `%${filters.search.toLowerCase()}%`;
+      query = query.where(
+        or(
+          like(sql`LOWER(${properties.title})`, search),
+          like(sql`LOWER(${properties.description})`, search),
+          like(sql`LOWER(${properties.location})`, search)
+        )
       );
     }
     
+    // Filter by location
     if (filters.location) {
-      properties = properties.filter(
-        (property) => property.location.toLowerCase().includes(filters.location!.toLowerCase())
+      query = query.where(
+        like(sql`LOWER(${properties.location})`, `%${filters.location.toLowerCase()}%`)
       );
     }
     
+    // Filter by property type
     if (filters.propertyType) {
-      properties = properties.filter(
-        (property) => property.propertyType === filters.propertyType
-      );
+      query = query.where(eq(properties.propertyType, filters.propertyType));
     }
     
+    // Filter by listing type
     if (filters.listingType) {
-      properties = properties.filter(
-        (property) => property.listingType === filters.listingType
-      );
+      query = query.where(eq(properties.listingType, filters.listingType));
     }
     
+    // Filter by min price
     if (filters.minPrice !== undefined) {
-      properties = properties.filter(
-        (property) => property.price >= filters.minPrice!
-      );
+      query = query.where(gte(properties.price, filters.minPrice));
     }
     
+    // Filter by max price
     if (filters.maxPrice !== undefined) {
-      properties = properties.filter(
-        (property) => property.price <= filters.maxPrice!
-      );
+      query = query.where(lte(properties.price, filters.maxPrice));
     }
     
+    // Filter by min bedrooms
     if (filters.minBedrooms !== undefined) {
-      properties = properties.filter(
-        (property) => property.bedrooms >= filters.minBedrooms!
-      );
+      query = query.where(gte(properties.bedrooms, filters.minBedrooms));
     }
     
+    // Filter by max bedrooms
     if (filters.maxBedrooms !== undefined) {
-      properties = properties.filter(
-        (property) => property.bedrooms <= filters.maxBedrooms!
-      );
+      query = query.where(lte(properties.bedrooms, filters.maxBedrooms));
     }
     
+    // Execute the query
+    const result = await query;
+    
+    // Filter by features (in-memory)
     if (filters.features && filters.features.length > 0) {
-      properties = properties.filter((property) => 
+      return result.filter((property) => 
         filters.features!.every(feature => 
           property.features?.includes(feature)
         )
       );
     }
     
-    return properties;
+    return result;
   }
   
   async getProperty(id: number): Promise<Property | undefined> {
-    return this.properties.get(id);
+    const result = await db.select().from(properties).where(eq(properties.id, id));
+    return result.length > 0 ? result[0] : undefined;
   }
   
   async getPropertiesByOwner(ownerId: number): Promise<Property[]> {
-    return Array.from(this.properties.values()).filter(
-      (property) => property.ownerId === ownerId
-    );
+    return await db.select().from(properties).where(eq(properties.ownerId, ownerId));
   }
   
   async createProperty(propertyData: InsertProperty): Promise<Property> {
-    const id = this.propertyIdCounter++;
-    const now = new Date();
-    
-    const property: Property = {
-      id,
-      title: propertyData.title,
-      description: propertyData.description,
-      price: propertyData.price,
-      propertyType: propertyData.propertyType,
-      listingType: propertyData.listingType,
-      bedrooms: propertyData.bedrooms,
-      bathrooms: propertyData.bathrooms,
-      area: propertyData.area,
-      location: propertyData.location,
-      address: propertyData.address,
-      latitude: propertyData.latitude,
-      longitude: propertyData.longitude,
-      features: propertyData.features || [],
-      images: propertyData.images || [],
-      ownerId: propertyData.ownerId,
-      verified: false,
-      createdAt: now,
-    };
-    
-    this.properties.set(id, property);
+    const [property] = await db
+      .insert(properties)
+      .values({
+        title: propertyData.title,
+        description: propertyData.description,
+        price: propertyData.price,
+        propertyType: propertyData.propertyType,
+        listingType: propertyData.listingType,
+        bedrooms: propertyData.bedrooms,
+        bathrooms: propertyData.bathrooms,
+        area: propertyData.area,
+        location: propertyData.location,
+        address: propertyData.address,
+        latitude: propertyData.latitude,
+        longitude: propertyData.longitude,
+        features: propertyData.features || [],
+        images: propertyData.images || [],
+        ownerId: propertyData.ownerId,
+        verified: false,
+      })
+      .returning();
     return property;
   }
   
   async updateProperty(id: number, propertyData: Partial<Property>): Promise<Property | undefined> {
-    const existingProperty = this.properties.get(id);
-    if (!existingProperty) return undefined;
-    
-    const updatedProperty = { ...existingProperty, ...propertyData };
-    this.properties.set(id, updatedProperty);
+    const [updatedProperty] = await db
+      .update(properties)
+      .set(propertyData)
+      .where(eq(properties.id, id))
+      .returning();
     return updatedProperty;
   }
   
   async deleteProperty(id: number): Promise<boolean> {
-    return this.properties.delete(id);
+    await db.delete(properties).where(eq(properties.id, id));
+    return true;
   }
   
   // FAVORITES
   async getFavorites(userId: number): Promise<Property[]> {
-    const userFavorites = Array.from(this.favorites.values()).filter(
-      (favorite) => favorite.userId === userId
-    );
+    // Join favorites with properties to get all favorited properties
+    const favProperties = await db
+      .select({
+        property: properties
+      })
+      .from(favorites)
+      .innerJoin(properties, eq(favorites.propertyId, properties.id))
+      .where(eq(favorites.userId, userId));
     
-    return userFavorites.map(
-      (favorite) => this.properties.get(favorite.propertyId)!
-    ).filter(property => property !== undefined);
+    // Extract the property objects
+    return favProperties.map(fp => fp.property);
   }
   
   async isFavorite(userId: number, propertyId: number): Promise<boolean> {
-    return Array.from(this.favorites.values()).some(
-      (favorite) => favorite.userId === userId && favorite.propertyId === propertyId
-    );
+    const result = await db
+      .select()
+      .from(favorites)
+      .where(
+        and(
+          eq(favorites.userId, userId),
+          eq(favorites.propertyId, propertyId)
+        )
+      );
+    return result.length > 0;
   }
   
   async addFavorite(favoriteData: InsertFavorite): Promise<Favorite> {
-    const id = this.favoriteIdCounter++;
-    const now = new Date();
-    
-    const favorite: Favorite = {
-      id,
-      userId: favoriteData.userId,
-      propertyId: favoriteData.propertyId,
-      createdAt: now,
-    };
-    
-    this.favorites.set(id, favorite);
+    const [favorite] = await db
+      .insert(favorites)
+      .values({
+        userId: favoriteData.userId,
+        propertyId: favoriteData.propertyId
+      })
+      .returning();
     return favorite;
   }
   
   async removeFavorite(userId: number, propertyId: number): Promise<boolean> {
-    const favorite = Array.from(this.favorites.values()).find(
-      (fav) => fav.userId === userId && fav.propertyId === propertyId
-    );
-    
-    if (!favorite) return false;
-    return this.favorites.delete(favorite.id);
+    await db
+      .delete(favorites)
+      .where(
+        and(
+          eq(favorites.userId, userId),
+          eq(favorites.propertyId, propertyId)
+        )
+      );
+    return true;
   }
   
   // MESSAGES
   async getConversations(userId: number): Promise<Conversation[]> {
-    // Get all messages where user is sender or receiver
-    const userMessages = Array.from(this.messages.values()).filter(
-      (message) => message.senderId === userId || message.receiverId === userId
-    );
+    // Get unique sender IDs where this user is the receiver
+    const senderIds = await db
+      .selectDistinct({ id: messages.senderId })
+      .from(messages)
+      .where(eq(messages.receiverId, userId));
     
-    // Get unique contacts
-    const contactIds = new Set<number>();
-    userMessages.forEach((message) => {
-      if (message.senderId === userId) {
-        contactIds.add(message.receiverId);
-      } else {
-        contactIds.add(message.senderId);
-      }
-    });
+    // Get unique receiver IDs where this user is the sender
+    const receiverIds = await db
+      .selectDistinct({ id: messages.receiverId })
+      .from(messages)
+      .where(eq(messages.senderId, userId));
     
-    // Create conversation objects
+    // Combine and deduplicate IDs
+    const contactIds = [...new Set([
+      ...senderIds.map(s => s.id),
+      ...receiverIds.map(r => r.id)
+    ])].filter(id => id !== userId);
+    
+    // Now create conversation objects for each contact
     const conversations: Conversation[] = [];
+    
     for (const contactId of contactIds) {
-      const contactMessages = userMessages.filter(
-        (message) =>
-          (message.senderId === userId && message.receiverId === contactId) ||
-          (message.senderId === contactId && message.receiverId === userId)
-      );
+      // Get the user info for this contact
+      const [contactUser] = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, contactId));
       
-      // Sort messages by createdAt (descending)
-      contactMessages.sort((a, b) => {
-        return b.createdAt.getTime() - a.createdAt.getTime();
+      if (!contactUser) continue;
+      
+      // Get the last message
+      const [lastMsg] = await db
+        .select()
+        .from(messages)
+        .where(
+          or(
+            and(
+              eq(messages.senderId, userId),
+              eq(messages.receiverId, contactId)
+            ),
+            and(
+              eq(messages.senderId, contactId),
+              eq(messages.receiverId, userId)
+            )
+          )
+        )
+        .orderBy(desc(messages.createdAt))
+        .limit(1);
+      
+      // Get unread count
+      const unreadMsgs = await db
+        .select({
+          count: sql<number>`count(*)`,
+        })
+        .from(messages)
+        .where(
+          and(
+            eq(messages.senderId, contactId),
+            eq(messages.receiverId, userId),
+            eq(messages.read, false)
+          )
+        );
+      
+      const unreadCount = unreadMsgs[0]?.count || 0;
+      
+      conversations.push({
+        user: contactUser,
+        lastMessage: lastMsg,
+        unreadCount,
       });
-      
-      const lastMessage = contactMessages[0];
-      const unreadCount = contactMessages.filter(
-        (message) => message.senderId === contactId && !message.read
-      ).length;
-      
-      const user = this.users.get(contactId);
-      if (user) {
-        conversations.push({
-          user,
-          lastMessage,
-          unreadCount,
-        });
-      }
     }
     
-    // Sort conversations by last message time (descending)
+    // Sort by most recent message
     conversations.sort((a, b) => {
-      return b.lastMessage.createdAt.getTime() - a.lastMessage.createdAt.getTime();
+      const timeA = new Date(a.lastMessage?.createdAt || 0).getTime();
+      const timeB = new Date(b.lastMessage?.createdAt || 0).getTime();
+      return timeB - timeA;
     });
     
     return conversations;
   }
   
   async getMessages(userId1: number, userId2: number): Promise<Message[]> {
-    const messages = Array.from(this.messages.values()).filter(
-      (message) =>
-        (message.senderId === userId1 && message.receiverId === userId2) ||
-        (message.senderId === userId2 && message.receiverId === userId1)
-    );
+    const messagesResult = await db
+      .select()
+      .from(messages)
+      .where(
+        or(
+          and(
+            eq(messages.senderId, userId1),
+            eq(messages.receiverId, userId2)
+          ),
+          and(
+            eq(messages.senderId, userId2),
+            eq(messages.receiverId, userId1)
+          )
+        )
+      )
+      .orderBy(messages.createdAt);
     
-    // Sort messages by createdAt (ascending)
-    messages.sort((a, b) => {
-      return a.createdAt.getTime() - b.createdAt.getTime();
-    });
-    
-    return messages;
+    return messagesResult;
   }
   
   async getUnreadMessageCount(userId: number): Promise<number> {
-    return Array.from(this.messages.values()).filter(
-      (message) => message.receiverId === userId && !message.read
-    ).length;
+    const countResult = await db
+      .select({
+        count: sql<number>`count(*)`,
+      })
+      .from(messages)
+      .where(
+        and(
+          eq(messages.receiverId, userId),
+          eq(messages.read, false)
+        )
+      );
+    
+    return countResult[0]?.count || 0;
   }
   
   async createMessage(messageData: InsertMessage): Promise<Message> {
-    const id = this.messageIdCounter++;
-    const now = new Date();
+    const [message] = await db
+      .insert(messages)
+      .values({
+        senderId: messageData.senderId,
+        receiverId: messageData.receiverId,
+        propertyId: messageData.propertyId,
+        content: messageData.content,
+        read: false,
+      })
+      .returning();
     
-    const message: Message = {
-      id,
-      senderId: messageData.senderId,
-      receiverId: messageData.receiverId,
-      propertyId: messageData.propertyId,
-      content: messageData.content,
-      read: false,
-      createdAt: now,
-    };
-    
-    this.messages.set(id, message);
     return message;
   }
   
   async markMessagesAsRead(senderId: number, receiverId: number): Promise<boolean> {
-    const messages = Array.from(this.messages.values()).filter(
-      (message) => message.senderId === senderId && message.receiverId === receiverId && !message.read
-    );
-    
-    messages.forEach((message) => {
-      message.read = true;
-      this.messages.set(message.id, message);
-    });
+    await db
+      .update(messages)
+      .set({
+        read: true
+      })
+      .where(
+        and(
+          eq(messages.senderId, senderId),
+          eq(messages.receiverId, receiverId),
+          eq(messages.read, false)
+        )
+      );
     
     return true;
   }
   
   // NEIGHBORHOODS
   async getNeighborhoods(): Promise<Neighborhood[]> {
-    return Array.from(this.neighborhoods.values());
+    return await db.select().from(neighborhoods);
   }
   
   async getNeighborhood(id: number): Promise<Neighborhood | undefined> {
-    return this.neighborhoods.get(id);
+    const result = await db.select().from(neighborhoods).where(eq(neighborhoods.id, id));
+    return result.length > 0 ? result[0] : undefined;
   }
   
   async createNeighborhood(neighborhoodData: InsertNeighborhood): Promise<Neighborhood> {
-    const id = this.neighborhoodIdCounter++;
-    
-    const neighborhood: Neighborhood = {
-      id,
-      name: neighborhoodData.name,
-      city: neighborhoodData.city,
-      description: neighborhoodData.description,
-      image: neighborhoodData.image,
-      propertyCount: 0,
-    };
-    
-    this.neighborhoods.set(id, neighborhood);
+    const [neighborhood] = await db
+      .insert(neighborhoods)
+      .values({
+        name: neighborhoodData.name,
+        city: neighborhoodData.city,
+        description: neighborhoodData.description,
+        image: neighborhoodData.image,
+        propertyCount: 0,
+      })
+      .returning();
     return neighborhood;
-  }
-  
-  // Initialize with sample data for development
-  private initializeData() {
-    // Create sample users
-    const user1 = this.createUser({
-      username: "johndoe",
-      password: "password123",
-      email: "john@example.com",
-      fullName: "John Doe",
-      phone: "+254712345678",
-      avatar: "https://randomuser.me/api/portraits/men/1.jpg",
-      role: "tenant",
-      bio: "Looking for a nice place in Nairobi",
-      language: "en",
-      confirmPassword: "password123"
-    });
-    
-    const user2 = this.createUser({
-      username: "janedoe",
-      password: "password123",
-      email: "jane@example.com",
-      fullName: "Jane Doe",
-      phone: "+254723456789",
-      avatar: "https://randomuser.me/api/portraits/women/1.jpg",
-      role: "landlord",
-      bio: "Property owner in Nairobi",
-      language: "en",
-      confirmPassword: "password123"
-    });
-    
-    const user3 = this.createUser({
-      username: "sarahk",
-      password: "password123",
-      email: "sarah@example.com",
-      fullName: "Sarah Kamau",
-      phone: "+254734567890",
-      avatar: "https://randomuser.me/api/portraits/women/2.jpg",
-      role: "agent",
-      bio: "Real estate agent with 5 years experience",
-      language: "en",
-      confirmPassword: "password123"
-    });
-    
-    // Create sample neighborhoods
-    const neighborhood1 = this.createNeighborhood({
-      name: "Westlands",
-      city: "Nairobi",
-      description: "Upscale commercial and residential area in Nairobi",
-      image: "https://images.unsplash.com/photo-1588092242287-9ca15574814c"
-    });
-    
-    const neighborhood2 = this.createNeighborhood({
-      name: "Kilimani",
-      city: "Nairobi",
-      description: "Popular residential area with many apartments",
-      image: "https://images.unsplash.com/photo-1568581789190-ae90a7dc3843"
-    });
-    
-    const neighborhood3 = this.createNeighborhood({
-      name: "Karen",
-      city: "Nairobi",
-      description: "Affluent suburb with large houses and plots",
-      image: "https://images.unsplash.com/photo-1549641030-c97d1b394e65"
-    });
-    
-    const neighborhood4 = this.createNeighborhood({
-      name: "Lavington",
-      city: "Nairobi",
-      description: "Quiet residential area with good security",
-      image: "https://images.unsplash.com/photo-1572003818138-19cf96ee15e7"
-    });
-    
-    // Create sample properties
-    const property1 = this.createProperty({
-      title: "Modern 2 Bedroom Apartment",
-      description: "Beautiful apartment with modern finishes, located in a secure compound with parking and swimming pool.",
-      price: 45000,
-      propertyType: "apartment",
-      listingType: "rent",
-      bedrooms: 2,
-      bathrooms: 2,
-      area: 85,
-      location: "Kilimani, Nairobi",
-      address: "Rose Avenue, Kilimani",
-      latitude: -1.2921,
-      longitude: 36.7892,
-      features: ["swimming pool", "security", "parking", "gym", "furnished"],
-      images: [
-        "https://images.unsplash.com/photo-1512917774080-9991f1c4c750",
-        "https://images.unsplash.com/photo-1554995207-c18c203602cb",
-        "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2"
-      ],
-      ownerId: 2
-    });
-    
-    const property2 = this.createProperty({
-      title: "Spacious 4 Bedroom Family Home",
-      description: "Large family home with garden, located in the quiet Karen neighborhood. Excellent for families with children.",
-      price: 18500000,
-      propertyType: "house",
-      listingType: "sale",
-      bedrooms: 4,
-      bathrooms: 3,
-      area: 250,
-      location: "Karen, Nairobi",
-      address: "Karen Road, Karen",
-      latitude: -1.3224,
-      longitude: 36.7064,
-      features: ["garden", "security", "parking", "servant quarter", "borehole"],
-      images: [
-        "https://images.unsplash.com/photo-1568605114967-8130f3a36994",
-        "https://images.unsplash.com/photo-1600210492493-0946911123ea",
-        "https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea"
-      ],
-      ownerId: 2
-    });
-    
-    const property3 = this.createProperty({
-      title: "Modern Studio Apartment",
-      description: "Cozy studio apartment perfect for singles or couples. Located close to shopping centers and public transportation.",
-      price: 30000,
-      propertyType: "apartment",
-      listingType: "rent",
-      bedrooms: 1,
-      bathrooms: 1,
-      area: 45,
-      location: "Westlands, Nairobi",
-      address: "Waiyaki Way, Westlands",
-      latitude: -1.2662,
-      longitude: 36.8063,
-      features: ["security", "parking", "furnished", "internet"],
-      images: [
-        "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267",
-        "https://images.unsplash.com/photo-1524758631624-e2822e304c36",
-        "https://images.unsplash.com/photo-1578683010236-d716f9a3f461"
-      ],
-      ownerId: 3
-    });
-    
-    const property4 = this.createProperty({
-      title: "Luxury 3 Bedroom Apartment",
-      description: "Luxurious apartment with high-end finishes, ample parking and 24-hour security. Located in a serene environment.",
-      price: 60000,
-      propertyType: "apartment",
-      listingType: "rent",
-      bedrooms: 3,
-      bathrooms: 2,
-      area: 120,
-      location: "Lavington, Nairobi",
-      address: "James Gichuru Road, Lavington",
-      latitude: -1.2833,
-      longitude: 36.7667,
-      features: ["swimming pool", "security", "parking", "gym", "furnished", "balcony"],
-      images: [
-        "https://images.unsplash.com/photo-1613977257363-707ba9348227",
-        "https://images.unsplash.com/photo-1564013434775-f71db0030976",
-        "https://images.unsplash.com/photo-1622015663319-e97cf3a4e2d4"
-      ],
-      ownerId: 3
-    });
-    
-    const property5 = this.createProperty({
-      title: "Modern 4 Bedroom Townhouse",
-      description: "Elegant townhouse in a gated community with excellent security, garden and play area for children.",
-      price: 22000000,
-      propertyType: "townhouse",
-      listingType: "sale",
-      bedrooms: 4,
-      bathrooms: 3,
-      area: 220,
-      location: "Runda, Nairobi",
-      address: "Runda Drive, Runda",
-      latitude: -1.2194,
-      longitude: 36.8062,
-      features: ["garden", "security", "parking", "servant quarter", "gym"],
-      images: [
-        "https://images.unsplash.com/photo-1600585154340-be6161a56a0c",
-        "https://images.unsplash.com/photo-1600210492486-724fe5c67fb3",
-        "https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3"
-      ],
-      ownerId: 2
-    });
-    
-    const property6 = this.createProperty({
-      title: "Spacious 2 Bedroom Apartment",
-      description: "Well-maintained apartment with spacious rooms, located in a family-friendly neighborhood with good amenities.",
-      price: 35000,
-      propertyType: "apartment",
-      listingType: "rent",
-      bedrooms: 2,
-      bathrooms: 1,
-      area: 75,
-      location: "Parklands, Nairobi",
-      address: "Forest Road, Parklands",
-      latitude: -1.2633,
-      longitude: 36.8172,
-      features: ["security", "parking", "water storage"],
-      images: [
-        "https://images.unsplash.com/photo-1594484208280-efa00f96fc21",
-        "https://images.unsplash.com/photo-1589834390005-5d4fb9bf3d32",
-        "https://images.unsplash.com/photo-1558997519-83ea9252edf8"
-      ],
-      ownerId: 3
-    });
-    
-    // Add some favorites
-    this.addFavorite({
-      userId: 1,
-      propertyId: 3
-    });
-    
-    this.addFavorite({
-      userId: 1,
-      propertyId: 6
-    });
-    
-    // Add some messages
-    this.createMessage({
-      senderId: 1,
-      receiverId: 3,
-      propertyId: 3,
-      content: "Hello, I'm interested in the studio apartment. Is it still available?"
-    });
-    
-    this.createMessage({
-      senderId: 3,
-      receiverId: 1,
-      propertyId: 3,
-      content: "Yes, it's available. Would you like to schedule a viewing?"
-    });
-    
-    this.createMessage({
-      senderId: 1,
-      receiverId: 3,
-      propertyId: 3,
-      content: "Yes, I would. Are you available this weekend?"
-    });
-    
-    this.createMessage({
-      senderId: 3,
-      receiverId: 1,
-      propertyId: 3,
-      content: "I can do Saturday afternoon. How about 2pm?"
-    });
-    
-    this.createMessage({
-      senderId: 1,
-      receiverId: 2,
-      propertyId: 1,
-      content: "Hi, I saw your apartment listing and I'm interested. Can I get more details?"
-    });
-    
-    this.createMessage({
-      senderId: 2,
-      receiverId: 1,
-      propertyId: 1,
-      content: "Hello! Yes, what would you like to know about the apartment?"
-    });
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();
