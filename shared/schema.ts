@@ -10,17 +10,21 @@ export const users = pgTable("users", {
   email: text("email").notNull().unique(),
   fullName: text("full_name").notNull(),
   phone: text("phone"),
-  avatar: text("avatar"),
+  avatar: text("avatar").default(""),
   role: text("role").notNull().default("tenant"), // tenant, landlord, agent
   bio: text("bio"),
   createdAt: timestamp("created_at").defaultNow(),
   language: text("language").default("en"),
+  resetToken: text("reset_token"),
+  resetTokenExpiry: timestamp("reset_token_expiry"),
 });
 
 export const insertUserSchema = createInsertSchema(users)
   .omit({ id: true, createdAt: true })
   .extend({
     confirmPassword: z.string(),
+    avatar: z.string().nullable(),
+    bio: z.string().nullable(),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: "Passwords do not match",
@@ -115,3 +119,38 @@ export type InsertMessage = z.infer<typeof insertMessageSchema>;
 
 export type Neighborhood = typeof neighborhoods.$inferSelect;
 export type InsertNeighborhood = z.infer<typeof insertNeighborhoodSchema>;
+
+// NOTIFICATIONS
+export const notifications = pgTable("notifications", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull(),
+  type: text("type").notNull(), // message, property_update, favorite, system
+  title: text("title").notNull(),
+  content: text("content").notNull(),
+  read: boolean("read").default(false),
+  linkUrl: text("link_url"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertNotificationSchema = createInsertSchema(notifications).omit({
+  id: true,
+  createdAt: true,
+  read: true,
+});
+
+export type Notification = typeof notifications.$inferSelect;
+export type InsertNotification = z.infer<typeof insertNotificationSchema>;
+
+// Review Schema
+export const reviewSchema = z.object({
+  id: z.number(),
+  propertyId: z.number(),
+  userId: z.number(),
+  rating: z.number().min(1).max(5),
+  comment: z.string(),
+  createdAt: z.date(),
+  updatedAt: z.date().nullable(),
+});
+
+export type Review = z.infer<typeof reviewSchema>;
+export type InsertReview = Omit<Review, 'id' | 'createdAt' | 'updatedAt'>;

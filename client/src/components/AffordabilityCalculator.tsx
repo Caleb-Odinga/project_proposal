@@ -13,7 +13,7 @@ export default function AffordabilityCalculator() {
   const { toast } = useToast();
 
   // Form state
-  const [monthlyIncome, setMonthlyIncome] = useState<string>("100000");
+  const [monthlyIncome, setMonthlyIncome] = useState<string>("56000");
   const [downPayment, setDownPayment] = useState<string>("1000000");
   const [loanTerm, setLoanTerm] = useState<string>("20");
   const [interestRate, setInterestRate] = useState<string>("13.5");
@@ -82,7 +82,7 @@ export default function AffordabilityCalculator() {
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-md overflow-hidden">
+    <div className="bg-white rounded-xl">
       <div className="md:flex">
         <div className="md:w-1/2 p-6 md:p-8 lg:p-10">
           <h2 className="text-2xl font-heading font-bold mb-2">{translate("affordabilityCalculator", language)}</h2>
@@ -156,7 +156,7 @@ export default function AffordabilityCalculator() {
           </div>
         </div>
         
-        <div className="md:w-1/2 bg-secondary p-6 md:p-8 lg:p-10 text-white">
+        <div className="md:w-1/2 bg-primary p-6 md:p-8 lg:p-10 text-white">
           <h3 className="text-xl font-heading font-semibold mb-4">{translate("estimatedAffordability", language)}</h3>
           
           <div className="mb-6">
@@ -185,7 +185,7 @@ export default function AffordabilityCalculator() {
               </div>
             </div>
             
-            <div className="bg-white/10 p-4 rounded-lg">
+            <div className="bg-black/10 p-4 rounded-lg">
               <div className="flex justify-between items-center mb-1">
                 <div className="text-sm text-white/80">{translate("totalInterest", language)}</div>
                 <div className="font-semibold">KSh {formatCurrency(totalInterest)}</div>
@@ -196,7 +196,7 @@ export default function AffordabilityCalculator() {
           <div className="mt-6">
             <Button
               variant="outline"
-              className="text-white border-white hover:bg-white hover:text-secondary"
+              className="text-black border-white hover:bg-white hover:text-secondary"
               onClick={() => {
                 const minPrice = Math.round(maxHomePrice * 0.8);
                 const maxPrice = Math.round(maxHomePrice * 1.2);

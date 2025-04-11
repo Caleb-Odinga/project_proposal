@@ -36,13 +36,7 @@ export default function Register() {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Check if already logged in
-  if (isAuthenticated) {
-    navigate('/');
-    return null;
-  }
-
-  // Initialize form
+  // All hooks must be called before any conditional returns
   const form = useForm<RegisterFormValues>({
     resolver: zodResolver(registerSchema),
     defaultValues: {
@@ -55,11 +49,26 @@ export default function Register() {
     },
   });
 
+  // Now safe to do conditional returns
+  if (isAuthenticated) {
+    navigate('/');
+    return null;
+  }
+
+
+
   // Handle form submission
   const onSubmit = async (values: RegisterFormValues) => {
     try {
       setIsSubmitting(true);
-      await register(values);
+      // Transform the data to match server expectations
+      const serverData = {
+        ...values,
+        full_name: values.fullName, // Convert to snake_case
+        avatar: null, // Required by server schema
+        bio: null, // Required by server schema
+      };
+      await register(serverData);
       toast({
         title: "Registration successful",
         description: "Your account has been created.",
@@ -98,7 +107,7 @@ export default function Register() {
                     <FormItem>
                       <FormLabel>{translate("username", language)}</FormLabel>
                       <FormControl>
-                        <Input placeholder="johndoe" {...field} />
+                        <Input placeholder="CaleShakii" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -111,7 +120,7 @@ export default function Register() {
                     <FormItem>
                       <FormLabel>{translate("email", language)}</FormLabel>
                       <FormControl>
-                        <Input placeholder="john@example.com" {...field} />
+                        <Input placeholder="cale@example.com" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -124,7 +133,7 @@ export default function Register() {
                     <FormItem>
                       <FormLabel>{translate("fullName", language)}</FormLabel>
                       <FormControl>
-                        <Input placeholder="John Doe" {...field} />
+                        <Input placeholder="Cale Shakii" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

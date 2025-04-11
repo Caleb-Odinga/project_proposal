@@ -5,6 +5,7 @@ import { useStore } from "@/lib/store";
 import { translate } from "@/lib/i18n";
 import { Skeleton } from "@/components/ui/skeleton";
 import MapView from "@/components/MapView";
+import { Property } from "@shared/schema";
 
 interface PropertyGridProps {
   location?: string;
@@ -34,12 +35,49 @@ export default function PropertyGrid({ location, showToggle = true }: PropertyGr
   };
 
   // Fetch properties
-  const { data: properties, isLoading, error } = useQuery({
+  // Define the API response type
+  type PropertyResponse = {
+    id: number;
+    title: string;
+    description: string;
+    price: number;
+    propertyType: string;
+    listingType: string;
+    bedrooms: number;
+    bathrooms: number;
+    area: number;
+    location: string;
+    address: string;
+    latitude: number;
+    longitude: number;
+    features: string[] | null;
+    images: string[] | null;
+    ownerId: number;
+    verified: boolean | null;
+    createdAt: string | null;
+  };
+
+  const { data: properties, isLoading, error } = useQuery<PropertyResponse[]>({
     queryKey: [`/api/properties?${buildQueryString()}`],
+    queryFn: async () => {
+      const response = await fetch(`/api/properties?${buildQueryString()}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch properties');
+      }
+      return response.json();
+    },
   });
 
   // Sort properties
-  const sortedProperties = properties ? [...properties] : [];
+  const sortedProperties = Array.isArray(properties) ? [...properties].map(p => ({
+    ...p,
+    features: p.features || [],
+    images: p.images || [],
+    createdAt: p.createdAt || new Date().toISOString(),
+    verified: p.verified ?? false,
+    isFavorite: false // This will be updated by the PropertyCard component if needed
+  })) : [];
+
   if (sortedProperties.length > 0) {
     switch (sortBy) {
       case "price-low":
@@ -150,20 +188,20 @@ export default function PropertyGrid({ location, showToggle = true }: PropertyGr
         </div>
       )}
 
-      {properties && properties.length > 0 && !showMap && (
+      {Array.isArray(properties) && properties.length > 0 && !showMap && (
         <div className="mt-8 flex justify-center">
           <nav className="flex items-center">
-            <a href="#" className="px-3 py-2 bg-neutral-100 hover:bg-neutral-200 rounded-l-lg text-neutral-700">
+            <button onClick={() => {}} className="px-3 py-2 bg-neutral-100 hover:bg-neutral-200 rounded-l-lg text-neutral-700">
               <i className="fas fa-chevron-left"></i>
-            </a>
-            <a href="#" className="px-4 py-2 bg-primary text-white">1</a>
-            <a href="#" className="px-4 py-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-700">2</a>
-            <a href="#" className="px-4 py-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-700">3</a>
+            </button>
+            <button onClick={() => {}} className="px-4 py-2 bg-primary text-white">1</button>
+            <button onClick={() => {}} className="px-4 py-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-700">2</button>
+            <button onClick={() => {}} className="px-4 py-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-700">3</button>
             <span className="px-4 py-2 bg-neutral-100 text-neutral-700">...</span>
-            <a href="#" className="px-4 py-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-700">12</a>
-            <a href="#" className="px-3 py-2 bg-neutral-100 hover:bg-neutral-200 rounded-r-lg text-neutral-700">
+            <button onClick={() => {}} className="px-4 py-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-700">12</button>
+            <button onClick={() => {}} className="px-3 py-2 bg-neutral-100 hover:bg-neutral-200 rounded-r-lg text-neutral-700">
               <i className="fas fa-chevron-right"></i>
-            </a>
+            </button>
           </nav>
         </div>
       )}

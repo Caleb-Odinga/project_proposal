@@ -1,23 +1,26 @@
+import express from "express";
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { requireAuth } from "./middleware/auth";
 import session from "express-session";
 import { z } from "zod";
 import bcrypt from "bcrypt";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
-import xss from "xss-clean";
+//import xss from "xss-clean";
 import {
   insertUserSchema,
   insertPropertySchema,
   insertFavoriteSchema,
-  insertMessageSchema
+  insertMessageSchema,
+  type InsertUser
 } from "@shared/schema";
 import { createId } from "@paralleldrive/cuid2";
 
 // Security constants
 const SALT_ROUNDS = 10;
-const MAX_REQUESTS_PER_WINDOW = 100;
+const MAX_REQUESTS_PER_WINDOW = 10000;
 const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 
 declare module "express-session" {
@@ -46,7 +49,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   );
   
   // XSS protection
-  app.use(xss());
+ // app.use(xss());
   
   // Rate limiting to prevent brute force attacks
   app.use(
@@ -88,6 +91,68 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // AUTH ENDPOINTS
   // -----------------------------------------
 
+  // Forgot Password
+  app.post("/api/auth/forgot-password", async (req, res) => {
+    try {
+      const { email } = req.body;
+      const user = await storage.getUserByEmail(email);
+      
+      if (!user) {
+        // Return success even if user not found for security
+        return res.json({ message: "If an account exists with that email, you will receive password reset instructions." });
+      }
+      
+      // Generate reset token
+      const resetToken = createId();
+      const resetTokenExpiry = new Date(Date.now() + 3600000); // 1 hour from now
+      
+      // Save reset token to user
+      await storage.updateUserResetToken(user.id, resetToken, resetTokenExpiry);
+      
+      // TODO: Send email with reset link
+      // For now, just return the token in development
+      if (process.env.NODE_ENV === "development") {
+        return res.json({
+          message: "Reset token generated (development only)",
+          resetLink: `http://localhost:3000/reset-password?token=${resetToken}`,
+        });
+      }
+      
+      res.json({ message: "If an account exists with that email, you will receive password reset instructions." });
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Reset Password
+  app.post("/api/auth/reset-password", async (req, res) => {
+    try {
+      const { token, password } = req.body;
+      
+      // Find user with valid reset token
+      const user = await storage.getUserByResetToken(token);
+      if (!user) {
+        return res.status(400).json({ message: "Invalid or expired reset token" });
+      }
+      
+      // Check if token is expired
+      if (user.resetTokenExpiry && new Date(user.resetTokenExpiry) < new Date()) {
+        return res.status(400).json({ message: "Reset token has expired" });
+      }
+      
+      // Hash new password
+      const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
+      
+      // Update password and clear reset token
+      await storage.updateUserPassword(user.id, hashedPassword);
+      
+      res.json({ message: "Password has been reset successfully" });
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+
   // Register
   app.post("/api/auth/register", async (req, res) => {
     try {
@@ -109,9 +174,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Remove confirmPassword field and use hashed password before saving to database
       const { confirmPassword, password, ...restUserData } = userFormData;
-      const userData = {
+      const userData: InsertUser = {
         ...restUserData,
-        password: hashedPassword
+        password: hashedPassword,
+        confirmPassword: hashedPassword // Include confirmPassword to satisfy type, it's not used for validation here
       };
       
       const user = await storage.createUser(userData);
@@ -593,6 +659,185 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // PROPERTIES ENDPOINTS
+  // -----------------------------------------
+
+  // Get all properties with filtering
+  app.get("/api/properties", async (req, res) => {
+    try {
+      const {
+        location,
+        minPrice,
+        maxPrice,
+        propertyType,
+        listingType,
+        minBedrooms,
+        minBathrooms,
+        sortBy
+      } = req.query;
+
+      // Get all properties first
+      let properties = await storage.getProperties();
+
+      // Apply filters
+      if (location) {
+        properties = properties.filter(p => 
+          p.location.toLowerCase().includes(String(location).toLowerCase())
+        );
+      }
+
+      if (minPrice) {
+        properties = properties.filter(p => p.price >= Number(minPrice));
+      }
+
+      if (maxPrice) {
+        properties = properties.filter(p => p.price <= Number(maxPrice));
+      }
+
+      if (propertyType) {
+        properties = properties.filter(p => p.propertyType === propertyType);
+      }
+
+      if (listingType) {
+        properties = properties.filter(p => p.listingType === listingType);
+      }
+
+      if (minBedrooms) {
+        properties = properties.filter(p => p.bedrooms >= Number(minBedrooms));
+      }
+
+      if (minBathrooms) {
+        properties = properties.filter(p => p.bathrooms >= Number(minBathrooms));
+      }
+
+      // Apply sorting
+      if (sortBy) {
+        switch (String(sortBy)) {
+          case 'price-low':
+            properties.sort((a, b) => a.price - b.price);
+            break;
+          case 'price-high':
+            properties.sort((a, b) => b.price - a.price);
+            break;
+          case 'newest':
+            properties.sort((a, b) => 
+              new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime()
+            );
+            break;
+          default:
+            // Default sorting (recommended)
+            break;
+        }
+      }
+
+      res.json(properties);
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Get property by ID
+  app.get("/api/properties/:id", async (req, res) => {
+    try {
+      const propertyId = parseInt(req.params.id);
+      
+      if (isNaN(propertyId)) {
+        return res.status(400).json({ message: "Invalid property ID" });
+      }
+      
+      const property = await storage.getProperty(propertyId);
+      if (!property) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+      
+      res.json(property);
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Create new property
+  app.post("/api/properties", authenticate, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      
+      const propertyData = insertPropertySchema.parse({
+        ...req.body,
+        ownerId: userId
+      });
+      
+      const property = await storage.createProperty(propertyData);
+      res.status(201).json(property);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: error.errors });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Update property
+  app.put("/api/properties/:id", authenticate, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const propertyId = parseInt(req.params.id);
+      
+      if (isNaN(propertyId)) {
+        return res.status(400).json({ message: "Invalid property ID" });
+      }
+      
+      // Check if property exists and belongs to user
+      const existingProperty = await storage.getProperty(propertyId);
+      if (!existingProperty) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+      
+      if (existingProperty.ownerId !== userId) {
+        return res.status(403).json({ message: "Not authorized to update this property" });
+      }
+      
+      const propertyData = insertPropertySchema.parse({
+        ...req.body,
+        ownerId: userId
+      });
+      
+      const property = await storage.updateProperty(propertyId, propertyData);
+      res.json(property);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: error.errors });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Delete property
+  app.delete("/api/properties/:id", authenticate, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const propertyId = parseInt(req.params.id);
+      
+      if (isNaN(propertyId)) {
+        return res.status(400).json({ message: "Invalid property ID" });
+      }
+      
+      // Check if property exists and belongs to user
+      const existingProperty = await storage.getProperty(propertyId);
+      if (!existingProperty) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+      
+      if (existingProperty.ownerId !== userId) {
+        return res.status(403).json({ message: "Not authorized to delete this property" });
+      }
+      
+      await storage.deleteProperty(propertyId);
+      res.json({ message: "Property deleted successfully" });
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // NEIGHBORHOODS ENDPOINTS
   // -----------------------------------------
 
@@ -621,6 +866,143 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       res.json(neighborhood);
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // REVIEW ENDPOINTS
+  // -----------------------------------------
+
+  // Get property reviews
+  app.get("/api/properties/:id/reviews", async (req, res) => {
+    const propertyId = parseInt(req.params.id);
+    if (isNaN(propertyId)) {
+      return res.status(400).json({ error: "Invalid property ID" });
+    }
+
+    const reviews = await storage.getPropertyReviews(propertyId);
+    res.json(reviews);
+  });
+
+  // Get property rating
+  app.get("/api/properties/:id/rating", async (req, res) => {
+    const propertyId = parseInt(req.params.id);
+    if (isNaN(propertyId)) {
+      return res.status(400).json({ error: "Invalid property ID" });
+    }
+
+    const rating = await storage.getPropertyAverageRating(propertyId);
+    res.json({ rating });
+  });
+
+  // Create new review
+  app.post("/api/properties/:id/reviews", requireAuth, async (req: express.Request & { user?: { id: number } }, res) => {
+    const propertyId = parseInt(req.params.id);
+    if (isNaN(propertyId)) {
+      return res.status(400).json({ error: "Invalid property ID" });
+    }
+
+    const { rating, comment } = req.body;
+    if (!rating || !comment) {
+      return res.status(400).json({ error: "Rating and comment are required" });
+    }
+
+    const review = await storage.createReview({
+      propertyId,
+      userId: req.user!.id,
+      rating,
+      comment,
+    });
+
+    res.json(review);
+  });
+
+  // Update review
+  app.put("/api/reviews/:id", requireAuth, async (req: express.Request & { user?: { id: number } }, res) => {
+    const reviewId = parseInt(req.params.id);
+    if (isNaN(reviewId)) {
+      return res.status(400).json({ error: "Invalid review ID" });
+    }
+
+    const { rating, comment } = req.body;
+    if (!rating || !comment) {
+      return res.status(400).json({ error: "Rating and comment are required" });
+    }
+
+    const updatedReview = await storage.updateReview(reviewId, rating, comment);
+    if (!updatedReview) {
+      return res.status(404).json({ error: "Review not found" });
+    }
+
+    res.json(updatedReview);
+  });
+
+  // Delete review
+  app.delete("/api/reviews/:id", requireAuth, async (req: express.Request & { user?: { id: number } }, res) => {
+    const reviewId = parseInt(req.params.id);
+    if (isNaN(reviewId)) {
+      return res.status(400).json({ error: "Invalid review ID" });
+    }
+
+    const success = await storage.deleteReview(reviewId);
+    if (!success) {
+      return res.status(404).json({ error: "Review not found" });
+    }
+
+    res.json({ success: true });
+  });
+
+  // NOTIFICATIONS ENDPOINTS
+  // -----------------------------------------
+
+  // Get user notifications
+  app.get("/api/notifications", authenticate, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const notifications = await storage.getNotifications(userId);
+      res.json(notifications);
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Get unread notification count
+  app.get("/api/notifications/unread/count", authenticate, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const count = await storage.getUnreadNotificationCount(userId);
+      res.json({ count });
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Mark notification as read
+  app.post("/api/notifications/:id/read", authenticate, async (req, res) => {
+    try {
+      const notificationId = parseInt(req.params.id);
+      if (isNaN(notificationId)) {
+        return res.status(400).json({ message: "Invalid notification ID" });
+      }
+      
+      const success = await storage.markNotificationAsRead(notificationId);
+      if (!success) {
+        return res.status(404).json({ message: "Notification not found" });
+      }
+      
+      res.json({ message: "Notification marked as read" });
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Mark all notifications as read
+  app.post("/api/notifications/read-all", authenticate, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      await storage.markAllNotificationsAsRead(userId);
+      res.json({ message: "All notifications marked as read" });
     } catch (error) {
       res.status(500).json({ message: "Internal server error" });
     }

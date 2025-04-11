@@ -8,6 +8,7 @@ import ProfileAvatar from "@/components/ProfileAvatar";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Home, Search, Heart, MessageSquare, User } from "lucide-react";
+import { NotificationBell } from "@/components/ui/notification-bell";
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -94,6 +95,9 @@ export default function MainLayout({ children }: MainLayoutProps) {
                     <span className="sr-only">{translate("messages", language)}</span>
                   </Link>
                 </Button>
+                <div className="hidden md:block">
+                  <NotificationBell />
+                </div>
                 <Button variant="ghost" className="p-2" asChild>
                   <Link href="/profile" className="flex items-center">
                     <ProfileAvatar user={user} />

@@ -18,11 +18,11 @@ import NotFound from "@/pages/not-found";
 function Router() {
   const { checkAuth } = useStore();
 
-  // Check auth status when app loads
+  /* Check auth status when app loads
   useEffect(() => {
     checkAuth();
   }, [checkAuth]);
-
+*/
   return (
     <MainLayout>
       <Switch>

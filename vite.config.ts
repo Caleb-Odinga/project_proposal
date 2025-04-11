@@ -4,7 +4,8 @@ import themePlugin from "@replit/vite-plugin-shadcn-theme-json";
 import path, { dirname } from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 import { fileURLToPath } from "url";
-
+import dotenv from "dotenv";
+dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
@@ -32,5 +33,12 @@ export default defineConfig({
   build: {
     outDir: path.resolve(__dirname, "dist/public"),
     emptyOutDir: true,
+  },
+  define: {
+    "process.env": {
+      VITE_DATABASE_URL: process.env.VITE_DATABASE_URL,
+      VITE_SESSION_SECRET: process.env.VITE_SESSION_SECRET,
+      VITE_API_URL: process.env.VITE_API_URL,
+    },
   },
 });

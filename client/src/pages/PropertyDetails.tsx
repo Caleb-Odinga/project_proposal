@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, Dispatch, SetStateAction } from "react";
 import { useRoute, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useStore } from "@/lib/store";
@@ -31,11 +31,13 @@ export default function PropertyDetails() {
   const { data: propertyData, isLoading, error } = useQuery({
     queryKey: [`/api/properties/${propertyId}`],
     enabled: propertyId > 0,
-    onSuccess: (data) => {
-      if (data) {
-        // Set favorite state
-        setIsFavorite(data.isFavorite || false);
+    queryFn: async () => {
+      const response = await apiRequest("GET", `/api/properties/${propertyId}`);
+      const data = await response.json();
+      if (data.isFavorite) {
+        setIsFavorite(data.isFavorite);
       }
+      return data;
     }
   });
 
@@ -271,7 +273,9 @@ export default function PropertyDetails() {
           
           {/* Thumbnail images */}
           <div className="flex mt-2 overflow-x-auto space-x-2">
-            {property.images.map((image, index) => (
+            {/* Removed misplaced and invalid code */}
+
+            {property.images.map((image: string, index: number) => (
               <button 
                 key={index} 
                 onClick={() => setCurrentImageIndex(index)}
@@ -351,10 +355,10 @@ export default function PropertyDetails() {
             <div className="mb-6">
               <h3 className="text-lg font-heading font-semibold mb-2">Features</h3>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                {property.features.map((feature, index) => (
+                {property.features.map((feature: string, index: number) => (
                   <div key={index} className="flex items-center">
-                    <CheckCircle className="h-4 w-4 mr-2 text-accent" />
-                    <span className="text-sm">{feature}</span>
+                  <CheckCircle className="h-4 w-4 mr-2 text-accent" />
+                  <span className="text-sm">{feature}</span>
                   </div>
                 ))}
               </div>

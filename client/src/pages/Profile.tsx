@@ -35,7 +35,7 @@ export default function Profile() {
   });
 
   // Fetch user properties
-  const { data: properties, isLoading: isLoadingProperties } = useQuery({
+  const { data: properties, isLoading: isLoadingProperties } = useQuery<any[]>({
     queryKey: ['/api/properties'],
     enabled: isAuthenticated && (user?.role === 'landlord' || user?.role === 'agent'),
   });
